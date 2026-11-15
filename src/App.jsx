@@ -13,7 +13,7 @@
  *    code preview (main area).
  */
 
-import React, { useMemo, useReducer, useState } from 'react'
+import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import {
   Database,
   Plus,
@@ -24,6 +24,7 @@ import {
   Braces,
   KeyRound,
   FileType,
+  ChevronDown,
 } from 'lucide-react'
 import {
   DATA_TYPES,
@@ -56,6 +57,7 @@ const createField = (overrides = {}) => ({
 /** Sensible starting point so the preview is never empty. */
 const initialState = {
   modelName: 'User',
+  expandedId: null, // id of the single field whose options panel is open
   fields: [
     createField({
       name: 'username',
@@ -84,8 +86,11 @@ function reducer(state, action) {
     case 'SET_MODEL_NAME':
       return { ...state, modelName: action.payload }
 
-    case 'ADD_FIELD':
-      return { ...state, fields: [...state.fields, createField()] }
+    case 'ADD_FIELD': {
+      const field = createField()
+      // Auto-expand freshly added fields so the user can configure them.
+      return { ...state, fields: [...state.fields, field], expandedId: field.id }
+    }
 
     case 'REMOVE_FIELD':
       return {
@@ -101,6 +106,13 @@ function reducer(state, action) {
           f.id === id ? { ...f, [prop]: value } : f,
         ),
       }
+    }
+
+    case 'TOGGLE_EXPAND': {
+      // Accordion behaviour: opening one field closes the previously open one.
+      const id = action.payload
+      const isOpen = state.expandedId === id
+      return { ...state, expandedId: isOpen ? null : id }
     }
 
     default:
@@ -130,10 +142,92 @@ const inputCls =
   'hover:border-slate-500'
 
 /* ===========================================================================
- * FieldEditor — one editable row in the field list
+ * Collapse — animated, IN-FLOW accordion wrapper (the layout fix)
+ * ---------------------------------------------------------------------------
+ * Why this exists: the old "expanded" sub-panel was taken out of document
+ * flow (position:absolute / fixed height + overflow:hidden), so it painted
+ * over the next field instead of pushing it down. This component animates
+ * `height` from 0 -> measured content height using the grid 0fr/1fr trick,
+ * then releases the element back to natural height (`h-auto`) after the
+ * transition, so:
+ *   - expanded content always occupies real space (siblings shift down),
+ *   - nested inputs/selects are never clipped (no lingering overflow:hidden),
+ *   - no z-index stacking hacks are needed at all.
  * ======================================================================== */
 
-function FieldEditor({ field, onChange, onRemove, index }) {
+function Collapse({ open, children }) {
+  const innerRef = useRef(null)
+  const [mounted, setMounted] = useState(open) // keep in DOM while animating closed
+  const [released, setReleased] = useState(open) // true => natural height, no clipping
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      setReleased(false) // re-lock height when opening (e.g. enum row appears)
+    }
+  }, [open])
+
+  const handleTransitionEnd = (e) => {
+    // Only react to our own height transition, not child transitions.
+    if (e.target === e.currentTarget && e.propertyName === 'grid-template-rows') {
+      if (open) {
+        setReleased(true) // hand height back to the content -> fully in flow
+      } else {
+        setMounted(false) // finished collapsing -> remove from layout
+      }
+    }
+  }
+
+  if (!mounted) return null
+
+  return (
+    <div
+      onTransitionEnd={handleTransitionEnd}
+      className={`grid overflow-hidden transition-[grid-template-rows] duration-200 ease-out ${
+        open && released ? '' : open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+      }`}
+    >
+      {/* min-h-0 is required for the grid child to actually shrink to 0fr */}
+      <div ref={innerRef} className="min-h-0">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/** Summary chips shown on the collapsed header row (quick-glance options). */
+function FieldSummary({ field }) {
+  const chips = []
+  if (field.required) chips.push('required')
+  if (field.unique) chips.push('unique')
+  if (String(field.defaultValue).trim()) chips.push(`default: ${String(field.defaultValue).trim()}`)
+  const enums = String(field.enumValues).split(',').map((v) => v.trim()).filter(Boolean)
+  if (field.type === 'String' && enums.length) chips.push(`enum: ${enums.join(', ')}`)
+  if (field.type === 'ObjectId' && String(field.ref).trim()) chips.push(`ref: ${field.ref.trim()}`)
+  if (!chips.length) return null
+  return (
+    <div className="ml-8 mt-1.5 flex flex-wrap gap-1.5">
+      {chips.map((c) => (
+        <span key={c} className="rounded bg-slate-700/60 px-1.5 py-0.5 font-mono text-[10px] text-slate-400">
+          {c}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/* ===========================================================================
+ * FieldEditor — one accordion item in the field list
+ * ---------------------------------------------------------------------------
+ * Structure (all normal document flow, NO absolute positioning):
+ *   <li class="relative">        <- static containing block, paints above
+ *                                     siblings via focus-within/z utilities
+ *     header row (always visible: name · type · chevron · delete)
+ *     <Collapse open={...}>      <- animated, in-flow options panel
+ *   </li>
+ * ======================================================================== */
+
+function FieldEditor({ field, onChange, onRemove, index, expanded, onToggle }) {
   const set = (prop) => (e) => {
     const value =
       e.target.type === 'checkbox' ? e.target.checked : e.target.value
@@ -141,9 +235,15 @@ function FieldEditor({ field, onChange, onRemove, index }) {
   }
 
   return (
-    <li className="group rounded-lg border border-slate-700 bg-slate-800/50 p-3 shadow-sm transition hover:border-slate-600">
-      {/* Header row: index badge, name, type, delete */}
-      <div className="flex items-center gap-2">
+    <li
+      className={`relative rounded-lg border bg-slate-800/50 shadow-sm transition-all duration-200 hover:border-slate-600 ${
+        expanded
+          ? 'z-20 border-emerald-500/40 bg-slate-800/80 shadow-lg shadow-black/30 ring-1 ring-emerald-500/20'
+          : 'z-0 border-slate-700'
+      }`}
+    >
+      {/* -------- Header row: index badge, name, type, expand, delete ----- */}
+      <div className="flex items-center gap-2 p-3">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-bold text-emerald-400">
           {index + 1}
         </span>
@@ -172,6 +272,20 @@ function FieldEditor({ field, onChange, onRemove, index }) {
 
         <button
           type="button"
+          onClick={onToggle}
+          title={expanded ? 'Collapse options' : 'Expand options'}
+          aria-expanded={expanded}
+          aria-label={`${expanded ? 'Collapse' : 'Expand'} options for field ${field.name || index + 1}`}
+          className="shrink-0 rounded-md p-2 text-slate-500 transition hover:bg-slate-700/60 hover:text-slate-200 active:scale-95"
+        >
+          <ChevronDown
+            size={16}
+            className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        <button
+          type="button"
           onClick={() => onRemove(field.id)}
           title="Delete field"
           aria-label={`Delete field ${field.name || index + 1}`}
@@ -181,83 +295,90 @@ function FieldEditor({ field, onChange, onRemove, index }) {
         </button>
       </div>
 
-      {/* Options row */}
-      <div className="mt-2.5 flex flex-wrap items-end gap-x-4 gap-y-2 pl-8">
-        <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-slate-300">
-          <input
-            type="checkbox"
-            checked={field.required}
-            onChange={set('required')}
-            className="h-4 w-4 accent-emerald-500"
-          />
-          Required
-        </label>
+      {/* Collapsed summary chips so options stay glanceable without expanding */}
+      {!expanded && <div className="pb-3"><FieldSummary field={field} /></div>}
 
-        <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-slate-300">
-          <input
-            type="checkbox"
-            checked={field.unique}
-            onChange={set('unique')}
-            disabled={field.type === 'Array' || field.type === 'Object'}
-            className="h-4 w-4 accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-          />
-          Unique
-        </label>
+      {/* -------- Options panel: animated, IN FLOW (pushes rows below) ---- */}
+      <Collapse open={expanded}>
+        <div className="border-t border-slate-700/60 px-3 pb-3 pt-2.5">
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+            <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={field.required}
+                onChange={set('required')}
+                className="h-4 w-4 accent-emerald-500"
+              />
+              Required
+            </label>
 
-        <LabeledInput label="Default value" className="w-40">
-          <input
-            type="text"
-            value={field.defaultValue}
-            onChange={set('defaultValue')}
-            placeholder="optional"
-            className={`${inputCls} font-mono text-xs`}
-          />
-        </LabeledInput>
+            <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={field.unique}
+                onChange={set('unique')}
+                disabled={field.type === 'Array' || field.type === 'Object'}
+                className="h-4 w-4 accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              />
+              Unique
+            </label>
 
-        {/* Enum values — only shown for String fields (per spec) */}
-        {field.type === 'String' && (
-          <LabeledInput label="Enum values (comma-separated)" className="min-w-48 flex-1">
-            <input
-              type="text"
-              value={field.enumValues}
-              onChange={set('enumValues')}
-              placeholder="e.g. active, inactive"
-              className={`${inputCls} font-mono text-xs`}
-            />
-          </LabeledInput>
-        )}
+            <LabeledInput label="Default value" className="w-40">
+              <input
+                type="text"
+                value={field.defaultValue}
+                onChange={set('defaultValue')}
+                placeholder="optional"
+                className={`${inputCls} font-mono text-xs`}
+              />
+            </LabeledInput>
 
-        {/* Reference model — extra affordance for ObjectId relations */}
-        {(field.type === 'ObjectId' ||
-          (field.type === 'Array' && field.arrayItemType === 'ObjectId')) && (
-          <LabeledInput label="Ref model" className="w-32">
-            <input
-              type="text"
-              value={field.ref}
-              onChange={set('ref')}
-              placeholder="e.g. User"
-              className={`${inputCls} font-mono text-xs`}
-            />
-          </LabeledInput>
-        )}
+            {/* Enum values — only shown for String fields (per spec) */}
+            {field.type === 'String' && (
+              <LabeledInput label="Enum values (comma-separated)" className="min-w-48 flex-1">
+                <input
+                  type="text"
+                  value={field.enumValues}
+                  onChange={set('enumValues')}
+                  placeholder="e.g. active, inactive"
+                  className={`${inputCls} font-mono text-xs`}
+                />
+              </LabeledInput>
+            )}
 
-        {/* Item type selector for Array fields */}
-        {field.type === 'Array' && (
-          <LabeledInput label="Array item type" className="w-32">
-            <select
-              value={field.arrayItemType}
-              onChange={set('arrayItemType')}
-              className={`${inputCls} cursor-pointer`}
-            >
-              {['String', 'Number', 'Boolean', 'Date', 'ObjectId'].map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </LabeledInput>
-        )}
-      </div>
+            {/* Reference model — extra affordance for ObjectId relations */}
+            {(field.type === 'ObjectId' ||
+              (field.type === 'Array' && field.arrayItemType === 'ObjectId')) && (
+              <LabeledInput label="Ref model" className="w-32">
+                <input
+                  type="text"
+                  value={field.ref}
+                  onChange={set('ref')}
+                  placeholder="e.g. User"
+                  className={`${inputCls} font-mono text-xs`}
+                />
+              </LabeledInput>
+            )}
+
+            {/* Item type selector for Array fields */}
+            {field.type === 'Array' && (
+              <LabeledInput label="Array item type" className="w-32">
+                <select
+                  value={field.arrayItemType}
+                  onChange={set('arrayItemType')}
+                  className={`${inputCls} cursor-pointer`}
+                >
+                  {['String', 'Number', 'Boolean', 'Date', 'ObjectId'].map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </LabeledInput>
+            )}
+          </div>
+        </div>
+      </Collapse>
     </li>
   )
 }
@@ -451,12 +572,24 @@ export default function App() {
                 </p>
               </div>
             ) : (
-              <ul className="flex flex-col gap-3">
+              /*
+               * Container refinements:
+               *  - `isolate` creates a local stacking context so any residual
+               *    z-index juggling inside the list can never leak over the
+               *    header or the preview column.
+               *  - NO fixed height / overflow here -> the card grows with the
+               *    accordion (dynamic height handled naturally by flow).
+               */
+              <ul className="flex flex-col gap-3 isolate">
                 {state.fields.map((field, i) => (
                   <FieldEditor
                     key={field.id}
                     field={field}
                     index={i}
+                    expanded={state.expandedId === field.id}
+                    onToggle={() =>
+                      dispatch({ type: 'TOGGLE_EXPAND', payload: field.id })
+                    }
                     onChange={updateField}
                     onRemove={removeField}
                   />
