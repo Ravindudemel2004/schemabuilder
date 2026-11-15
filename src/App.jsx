@@ -13,7 +13,7 @@
  *    code preview (main area).
  */
 
-import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import React, { useMemo, useReducer, useState } from 'react'
 import {
   Database,
   Plus,
@@ -147,50 +147,27 @@ const inputCls =
  * Why this exists: the old "expanded" sub-panel was taken out of document
  * flow (position:absolute / fixed height + overflow:hidden), so it painted
  * over the next field instead of pushing it down. This component animates
- * `height` from 0 -> measured content height using the grid 0fr/1fr trick,
- * then releases the element back to natural height (`h-auto`) after the
- * transition, so:
+ * `height` using the CSS grid 0fr/1fr trick, so:
  *   - expanded content always occupies real space (siblings shift down),
- *   - nested inputs/selects are never clipped (no lingering overflow:hidden),
+ *   - nested inputs/selects are never clipped (the 1fr row fits content),
  *   - no z-index stacking hacks are needed at all.
  * ======================================================================== */
 
 function Collapse({ open, children }) {
-  const innerRef = useRef(null)
-  const [mounted, setMounted] = useState(open) // keep in DOM while animating closed
-  const [released, setReleased] = useState(open) // true => natural height, no clipping
-
-  useEffect(() => {
-    if (open) {
-      setMounted(true)
-      setReleased(false) // re-lock height when opening (e.g. enum row appears)
-    }
-  }, [open])
-
-  const handleTransitionEnd = (e) => {
-    // Only react to our own height transition, not child transitions.
-    if (e.target === e.currentTarget && e.propertyName === 'grid-template-rows') {
-      if (open) {
-        setReleased(true) // hand height back to the content -> fully in flow
-      } else {
-        setMounted(false) // finished collapsing -> remove from layout
-      }
-    }
-  }
-
-  if (!mounted) return null
-
+  // Animated, IN-FLOW accordion wrapper (the layout fix).
+  // Technique: CSS grid with `grid-template-rows: 0fr -> 1fr` animates the
+  // container height smoothly while keeping the child at `min-h-0`, so:
+  //   - content always occupies real space (siblings shift down, never overlap),
+  //   - expanded content is never clipped (the 1fr row fits the content exactly),
+  //   - no absolute positioning / z-index stacking hacks are required.
   return (
     <div
-      onTransitionEnd={handleTransitionEnd}
-      className={`grid overflow-hidden transition-[grid-template-rows] duration-200 ease-out ${
-        open && released ? '' : open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+      className={`grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out ${
+        open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
       }`}
     >
       {/* min-h-0 is required for the grid child to actually shrink to 0fr */}
-      <div ref={innerRef} className="min-h-0">
-        {children}
-      </div>
+      <div className="min-h-0">{children}</div>
     </div>
   )
 }
@@ -236,10 +213,10 @@ function FieldEditor({ field, onChange, onRemove, index, expanded, onToggle }) {
 
   return (
     <li
-      className={`relative rounded-lg border bg-slate-800/50 shadow-sm transition-all duration-200 hover:border-slate-600 ${
+      className={`rounded-lg border bg-slate-800/50 shadow-sm transition-all duration-200 hover:border-slate-600 ${
         expanded
-          ? 'z-20 border-emerald-500/40 bg-slate-800/80 shadow-lg shadow-black/30 ring-1 ring-emerald-500/20'
-          : 'z-0 border-slate-700'
+          ? 'border-emerald-500/40 bg-slate-800/80 shadow-lg shadow-black/30 ring-1 ring-emerald-500/20'
+          : 'border-slate-700'
       }`}
     >
       {/* -------- Header row: index badge, name, type, expand, delete ----- */}
@@ -300,7 +277,8 @@ function FieldEditor({ field, onChange, onRemove, index, expanded, onToggle }) {
 
       {/* -------- Options panel: animated, IN FLOW (pushes rows below) ---- */}
       <Collapse open={expanded}>
-        <div className="border-t border-slate-700/60 px-3 pb-3 pt-2.5">
+        {/* pl-11 aligns the details with the name input (badge 24px + gaps) */}
+        <div className="border-t border-slate-700/60 pb-3 pl-11 pr-3 pt-2.5">
           <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
             <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-slate-300">
               <input
@@ -507,7 +485,7 @@ export default function App() {
       </header>
 
       {/* ========================= Main layout ========================== */}
-      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(360px,440px)_1fr]">
+      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(360px,440px)_1fr] lg:items-start">
         {/* ---------------------- Sidebar: controls ---------------------- */}
         <aside className="flex flex-col gap-5">
           {/* Model configuration card */}
@@ -572,15 +550,15 @@ export default function App() {
                 </p>
               </div>
             ) : (
-              /*
-               * Container refinements:
-               *  - `isolate` creates a local stacking context so any residual
-               *    z-index juggling inside the list can never leak over the
-               *    header or the preview column.
-               *  - NO fixed height / overflow here -> the card grows with the
-               *    accordion (dynamic height handled naturally by flow).
-               */
-              <ul className="flex flex-col gap-3 isolate">
+               /*
+                * Container refinements:
+                *  - `flex-col gap-3` -> each field is a flex child in normal
+                *    flow, so expanding one naturally pushes the others down
+                *    (height animation handled by the Collapse component).
+                *  - NO fixed height / overflow here -> the card grows with the
+                *    accordion (dynamic height handled naturally by flow).
+                */
+               <ul className="flex flex-col gap-3">
                 {state.fields.map((field, i) => (
                   <FieldEditor
                     key={field.id}
