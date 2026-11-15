@@ -302,80 +302,80 @@ function FieldEditor({ field, onChange, onRemove, index, expanded, onToggle }) {
       <Collapse open={expanded}>
         <div className="border-t border-slate-700/60 px-3 pb-3 pt-2.5">
           <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-        <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-slate-300">
-          <input
-            type="checkbox"
-            checked={field.required}
-            onChange={set('required')}
-            className="h-4 w-4 accent-emerald-500"
-          />
-          Required
-        </label>
+            <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={field.required}
+                onChange={set('required')}
+                className="h-4 w-4 accent-emerald-500"
+              />
+              Required
+            </label>
 
-        <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-slate-300">
-          <input
-            type="checkbox"
-            checked={field.unique}
-            onChange={set('unique')}
-            disabled={field.type === 'Array' || field.type === 'Object'}
-            className="h-4 w-4 accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-          />
-          Unique
-        </label>
+            <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={field.unique}
+                onChange={set('unique')}
+                disabled={field.type === 'Array' || field.type === 'Object'}
+                className="h-4 w-4 accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              />
+              Unique
+            </label>
 
-        <LabeledInput label="Default value" className="w-40">
-          <input
-            type="text"
-            value={field.defaultValue}
-            onChange={set('defaultValue')}
-            placeholder="optional"
-            className={`${inputCls} font-mono text-xs`}
-          />
-        </LabeledInput>
+            <LabeledInput label="Default value" className="w-40">
+              <input
+                type="text"
+                value={field.defaultValue}
+                onChange={set('defaultValue')}
+                placeholder="optional"
+                className={`${inputCls} font-mono text-xs`}
+              />
+            </LabeledInput>
 
-        {/* Enum values — only shown for String fields (per spec) */}
-        {field.type === 'String' && (
-          <LabeledInput label="Enum values (comma-separated)" className="min-w-48 flex-1">
-            <input
-              type="text"
-              value={field.enumValues}
-              onChange={set('enumValues')}
-              placeholder="e.g. active, inactive"
-              className={`${inputCls} font-mono text-xs`}
-            />
-          </LabeledInput>
-        )}
+            {/* Enum values — only shown for String fields (per spec) */}
+            {field.type === 'String' && (
+              <LabeledInput label="Enum values (comma-separated)" className="min-w-48 flex-1">
+                <input
+                  type="text"
+                  value={field.enumValues}
+                  onChange={set('enumValues')}
+                  placeholder="e.g. active, inactive"
+                  className={`${inputCls} font-mono text-xs`}
+                />
+              </LabeledInput>
+            )}
 
-        {/* Reference model — extra affordance for ObjectId relations */}
-        {(field.type === 'ObjectId' ||
-          (field.type === 'Array' && field.arrayItemType === 'ObjectId')) && (
-          <LabeledInput label="Ref model" className="w-32">
-            <input
-              type="text"
-              value={field.ref}
-              onChange={set('ref')}
-              placeholder="e.g. User"
-              className={`${inputCls} font-mono text-xs`}
-            />
-          </LabeledInput>
-        )}
+            {/* Reference model — extra affordance for ObjectId relations */}
+            {(field.type === 'ObjectId' ||
+              (field.type === 'Array' && field.arrayItemType === 'ObjectId')) && (
+              <LabeledInput label="Ref model" className="w-32">
+                <input
+                  type="text"
+                  value={field.ref}
+                  onChange={set('ref')}
+                  placeholder="e.g. User"
+                  className={`${inputCls} font-mono text-xs`}
+                />
+              </LabeledInput>
+            )}
 
-        {/* Item type selector for Array fields */}
-        {field.type === 'Array' && (
-          <LabeledInput label="Array item type" className="w-32">
-            <select
-              value={field.arrayItemType}
-              onChange={set('arrayItemType')}
-              className={`${inputCls} cursor-pointer`}
-            >
-              {['String', 'Number', 'Boolean', 'Date', 'ObjectId'].map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </LabeledInput>
-        )}
+            {/* Item type selector for Array fields */}
+            {field.type === 'Array' && (
+              <LabeledInput label="Array item type" className="w-32">
+                <select
+                  value={field.arrayItemType}
+                  onChange={set('arrayItemType')}
+                  className={`${inputCls} cursor-pointer`}
+                >
+                  {['String', 'Number', 'Boolean', 'Date', 'ObjectId'].map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </LabeledInput>
+            )}
           </div>
         </div>
       </Collapse>
