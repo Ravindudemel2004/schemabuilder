@@ -15,6 +15,7 @@ export const DATA_TYPES = [
   'ObjectId',
   'Array',
   'Object',
+  'Text',
 ]
 
 /**
@@ -125,7 +126,7 @@ function buildFieldBody(field) {
   } else if (field.type === 'Object') {
     parts.push('type: Object')
   } else {
-    parts.push(`type: ${field.type}`)
+    parts.push(`type: ${field.type === 'Text' ? 'String' : field.type}`)
   }
 
   // --- required / unique --------------------------------------------------
