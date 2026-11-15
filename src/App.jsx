@@ -8,7 +8,7 @@ const nextId = () => `field-${Date.now()}-${idCounter++}`
 
 const createField = (overrides = {}) => ({
   id: nextId(),
-  name: 'fieldName',
+  name: '',
   type: 'String',
   required: false,
   unique: false,
@@ -20,38 +20,12 @@ const createField = (overrides = {}) => ({
 })
 
 const initialState = {
-  modelName: 'Venue',
+  modelName: 'User',
   fields: [
-    createField({ name: 'property_id', type: 'String', unique: true }),
-    createField({ name: 'name', type: 'String' }),
-    createField({
-      name: 'category',
-      type: 'String',
-      enumValues:
-        'lecture_hall,lab,lab_instrument,furniture,library_computer,gym,auditorium,study_area,service_center',
-    }),
-    createField({ name: 'department', type: 'String' }),
-    createField({ name: 'location_building', type: 'String' }),
-    createField({ name: 'location_floor', type: 'String' }),
-    createField({ name: 'location_room', type: 'String' }),
-    createField({ name: 'description', type: 'String' }),
-    createField({ name: 'service_provided', type: 'String' }),
-    createField({ name: 'tags', type: 'Array', arrayItemType: 'String' }),
-    createField({ name: 'images', type: 'Array', arrayItemType: 'String' }),
-    createField({
-      name: 'status',
-      type: 'String',
-      enumValues: 'available,booked,maintenance,retired,in_use',
-    }),
-    createField({ name: 'is_bookable', type: 'Boolean' }),
-    createField({
-      name: 'booking_type',
-      type: 'String',
-      enumValues: 'per_session,hourly,daily,external_system',
-    }),
-    createField({ name: 'external_system_url', type: 'String' }),
-    createField({ name: 'created_at', type: 'Date' }),
-    createField({ name: 'updated_at', type: 'Date' }),
+    createField({ name: 'username', type: 'String', required: true, unique: true }),
+    createField({ name: 'email', type: 'String', required: true, unique: true }),
+    createField({ name: 'role', type: 'String', enumValues: 'admin, editor, viewer', defaultValue: 'viewer' }),
+    createField({ name: 'isActive', type: 'Boolean', defaultValue: 'true' }),
   ],
 }
 
